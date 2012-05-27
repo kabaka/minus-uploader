@@ -32,7 +32,7 @@ require 'json'
 require 'optparse'
 require 'ostruct'
 
-$cookie, $options = '', OpenStruct.new
+$cookie, options = '', OpenStruct.new
 
 OptionParser.new do |opts|
   opts.banner = "Usage: #{$0} [options] files"
@@ -42,15 +42,15 @@ OptionParser.new do |opts|
 
   opts.on('-g', '--gallery GALLERY',
           'Gallery to which file should be uploaded') do |v|
-    $options.gallery = v
+    options.gallery = v
   end
 
   opts.on('-u', '--username USERNAME', 'Minus user name') do |v|
-    $options.username = v
+    options.username = v
   end
 
   opts.on('-p', '--password PASSWORD', 'Minus password') do |v|
-    $options.password = v
+    options.password = v
   end
 
   opts.on('-h', '--help', 'Show this message') do
@@ -59,11 +59,12 @@ OptionParser.new do |opts|
   end
 end.parse!
 
+
 abort "Usage: #{$0} [options] files" if ARGV.empty?
 
-abort 'username is required' if $options.username == nil
-abort 'password is required' if $options.password == nil
-abort 'gallery is required'  if $options.gallery == nil
+abort 'username is required' if options.username == nil
+abort 'password is required' if options.password == nil
+abort 'gallery is required'  if options.gallery == nil
 
 def sign_in username, password
   raise 'already signed in' unless $cookie.empty?
@@ -133,10 +134,11 @@ end
 def upload filename, editor_id
   basename = File.basename filename
 
+  path = "/api/UploadItem?editor_id=#{editor_id}&key=OK&filename=#{basename}"
   header = {'Cookie' => $cookie}
+
   res = Net::HTTP.start('minus.com', 80) do |http|
-    http.request_post("/api/UploadItem?editor_id=#{editor_id}&key=OK&filename=#{basename}",
-                      IO.read(filename), header)
+    http.request_post path, IO.read(filename), header
   end
 
   unless res.is_a? Net::HTTPSuccess
@@ -149,8 +151,8 @@ def upload filename, editor_id
 end
 
 
-sign_in $options.username, $options.password
-editor_id = get_editor_id $options.gallery
+sign_in options.username, options.password
+editor_id = get_editor_id options.gallery
 
 if editor_id == nil or editor_id.empty?
   puts 'Error: could not get editor_id for gallery'
@@ -158,17 +160,23 @@ if editor_id == nil or editor_id.empty?
   exit
 end
 
+
 ARGV.each do |filename|
   unless File.exists? filename
     puts "Warning: skipping non-existent file: #{filename}"
     next
   end
 
-  id = upload filename, editor_id
+  begin
+    id = upload filename, editor_id
   
-  ext = File.extname filename  
+    ext = File.extname filename  
 
-  puts "https://i.minus.com/i#{id}#{ext}"
+    puts "https://i.minus.com/i#{id}#{ext}"
+  rescue Exception => e
+    puts "Error: #{e}"
+    puts e.backtrace
+  end
 end
 
 sign_out
