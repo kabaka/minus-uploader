@@ -1,0 +1,174 @@
+#!/usr/bin/env ruby
+# Copyright (C) 2010-2012 Kyle Johnson <kyle@vacantminded.com>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# TODO:
+# * Refactor.
+# * Stop asking for log-in credentials as command args!
+# * Create nonexistent galleries.
+# * Don't give direct image links for non-image files.
+
+
+require 'uri'
+require 'net/http'
+require 'json'
+require 'optparse'
+require 'ostruct'
+
+$cookie, $options = '', OpenStruct.new
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: #{$0} [options] files"
+
+  opts.separator ''
+  opts.separator 'Options:'
+
+  opts.on('-g', '--gallery GALLERY',
+          'Gallery to which file should be uploaded') do |v|
+    $options.gallery = v
+  end
+
+  opts.on('-u', '--username USERNAME', 'Minus user name') do |v|
+    $options.username = v
+  end
+
+  opts.on('-p', '--password PASSWORD', 'Minus password') do |v|
+    $options.password = v
+  end
+
+  opts.on('-h', '--help', 'Show this message') do
+    puts opts
+    exit
+  end
+end.parse!
+
+abort "Usage: #{$0} [options] files" if ARGV.empty?
+
+abort 'username is required' if $options.username == nil
+abort 'password is required' if $options.password == nil
+abort 'gallery is required'  if $options.gallery == nil
+
+def sign_in username, password
+  raise 'already signed in' unless $cookie.empty?
+
+  uri = URI('http://minus.com/api/SignIn')
+
+  res = Net::HTTP.post_form(uri, 'username' => username,
+                            'password1' => password)
+
+  unless res.is_a? Net::HTTPSuccess
+    raise "sign_in: error completing API call"
+  end
+
+  j = JSON.parse res.body
+
+  raise 'sign-in failed' unless j['success'] == true
+
+  $cookie = res['Set-Cookie']
+end
+
+
+def sign_out
+  raise 'cannot sign out: not signed in' if $cookie.empty?
+
+  uri = URI("http://minus.com/api/SignOut")
+  req = Net::HTTP::Get.new(uri.request_uri)
+  req['Cookie'] = $cookie
+
+  res = Net::HTTP.start(uri.hostname, uri.port) do |http|
+    http.request req
+  end
+
+  # Minus gives me a 302 on this. Whatever.
+  unless res.is_a? Net::HTTPSuccess or res.is_a? Net::HTTPRedirection
+    raise "sign_out: error completing API call"
+  end
+
+  $cookie.clear
+end
+
+
+def get_editor_id gallery
+  uri = URI("http://minus.com/api/pane/mine.json")
+  req = Net::HTTP::Get.new(uri.request_uri)
+  req['Cookie'] = $cookie
+
+  res = Net::HTTP.start(uri.hostname, uri.port) do |http|
+    http.request req
+  end
+
+  unless res.is_a? Net::HTTPSuccess
+    raise "error completing API call: #{res.body}" 
+  end
+
+  j = JSON.parse res.body
+
+  raise 'no galleries available' if j['galleries'].empty?
+
+  galleries = j['galleries'].select {|g| g['name'] == gallery}
+
+  raise "gallery #{gallery} not found" if galleries.empty?
+
+  galleries[0]['editor_id']
+end
+
+
+def upload filename, editor_id
+  basename = File.basename filename
+
+  header = {'Cookie' => $cookie}
+  res = Net::HTTP.start('minus.com', 80) do |http|
+    http.request_post("/api/UploadItem?editor_id=#{editor_id}&key=OK&filename=#{basename}",
+                      IO.read(filename), header)
+  end
+
+  unless res.is_a? Net::HTTPSuccess
+    raise "upload: error completing API call"
+  end
+  
+  j = JSON.parse res.body
+
+  j['id']
+end
+
+
+sign_in $options.username, $options.password
+editor_id = get_editor_id $options.gallery
+
+if editor_id == nil or editor_id.empty?
+  puts 'Error: could not get editor_id for gallery'
+  sign_out
+  exit
+end
+
+ARGV.each do |filename|
+  unless File.exists? filename
+    puts "Warning: skipping non-existent file: #{filename}"
+    next
+  end
+
+  id = upload filename, editor_id
+  
+  ext = File.extname filename  
+
+  puts "https://i.minus.com/i#{id}#{ext}"
+end
+
+sign_out
