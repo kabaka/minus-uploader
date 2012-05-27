@@ -208,7 +208,7 @@ ARGV.each do |filename|
     res = upload filename, editor_id
     ext = File.extname filename  
   
-    if res['type'].zero?
+    if res['type'].zero? or res['type'] == 8
       puts "https://i.minus.com/i#{res['id']}#{ext}"
     else
       puts "https://min.us/l#{res['id']}"
