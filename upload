@@ -21,9 +21,8 @@
 
 # TODO:
 # * Refactor.
-# * Stop asking for log-in credentials as command args!
+# * Stop asking for log-in credentials as command args (maybe?).
 # * Create nonexistent galleries.
-# * Don't give direct image links for non-image files.
 
 
 require 'uri'
@@ -186,9 +185,7 @@ def upload filename, editor_id
     raise "upload: error completing API call"
   end
   
-  j = JSON.parse res.body
-
-  j['id']
+  JSON.parse res.body
 end
 
 
@@ -196,9 +193,8 @@ sign_in options.username, options.password
 editor_id = get_editor_id options.gallery
 
 if editor_id == nil or editor_id.empty?
-  puts 'Error: could not get editor_id for gallery'
   sign_out
-  exit
+  abort 'Error: could not get editor_id for gallery'
 end
 
 
@@ -209,13 +205,17 @@ ARGV.each do |filename|
   end
 
   begin
-    id = upload filename, editor_id
-  
+    res = upload filename, editor_id
     ext = File.extname filename  
+  
+    if res['type'].zero?
+      puts "https://i.minus.com/i#{res['id']}#{ext}"
+    else
+      puts "https://min.us/l#{res['id']}"
+    end
 
-    puts "https://i.minus.com/i#{id}#{ext}"
   rescue Exception => e
-    puts "Error: #{e}"
+    puts "Error uploading #{filename}: #{e}"
     puts e.backtrace
   end
 end

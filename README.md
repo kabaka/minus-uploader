@@ -23,4 +23,3 @@ This simple script allows you to upload files to a folder on minus.com.
 * Create nonexistent galleries.
   * Figure out how to rename galleries after creation since the bogus API docs
   are lying about `/api/SaveGallery`.
-* Don't give direct image links for non-image files.
