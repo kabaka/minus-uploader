@@ -64,7 +64,7 @@ abort "Usage: #{$0} [options] files" if ARGV.empty?
 
 abort 'username is required' if options.username == nil
 abort 'password is required' if options.password == nil
-abort 'gallery is required'  if options.gallery == nil
+abort 'gallery is required'  if options.gallery  == nil
 
 def sign_in username, password
   raise 'already signed in' unless $cookie.empty?
@@ -90,7 +90,8 @@ def sign_out
   raise 'cannot sign out: not signed in' if $cookie.empty?
 
   uri = URI("http://minus.com/api/SignOut")
-  req = Net::HTTP::Get.new(uri.request_uri)
+
+  req = Net::HTTP::Get.new uri.request_uri
   req['Cookie'] = $cookie
 
   res = Net::HTTP.start(uri.hostname, uri.port) do |http|
@@ -105,10 +106,48 @@ def sign_out
   $cookie.clear
 end
 
+# This doesn't work because there is no SaveGallery API function (even though
+# it is listed in the API docs).
+def create_gallery gallery
+  uri = URI("http://minus.com/api/CreateGallery")
+
+  req = Net::HTTP::Get.new uri.request_uri
+  req['Cookie'] = $cookie
+
+  res = Net::HTTP.start(uri.hostname, uri.port) do |http|
+    http.request req
+  end
+
+  unless res.is_a? Net::HTTPSuccess
+    raise "CreateGallery error completing API call" 
+  end
+
+  puts res.body
+
+  j = JSON.parse res.body
+
+  id = j['editor_id']
+
+  uri = URI("http://minus.com/api/SaveGallery?id=#{id}&name=#{gallery}&key=OK")
+
+  req = Net::HTTP::Get.new uri.request_uri
+  req['Cookie'] = $cookie
+
+  res = Net::HTTP.start(uri.hostname, uri.port) do |http|
+    http.request req
+  end
+
+  unless res.is_a? Net::HTTPSuccess
+    raise "SaveGallery error completing API call"
+  end
+
+  id
+end
 
 def get_editor_id gallery
   uri = URI("http://minus.com/api/pane/mine.json")
-  req = Net::HTTP::Get.new(uri.request_uri)
+
+  req = Net::HTTP::Get.new uri.request_uri
   req['Cookie'] = $cookie
 
   res = Net::HTTP.start(uri.hostname, uri.port) do |http|
@@ -121,10 +160,12 @@ def get_editor_id gallery
 
   j = JSON.parse res.body
 
+  #return create_gallery(gallery) if j['galleries'].empty?
   raise 'no galleries available' if j['galleries'].empty?
 
   galleries = j['galleries'].select {|g| g['name'] == gallery}
 
+  #return create_gallery(gallery) if galleries.empty?
   raise "gallery #{gallery} not found" if galleries.empty?
 
   galleries[0]['editor_id']
