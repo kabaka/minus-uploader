@@ -27,7 +27,7 @@
 
 require 'uri'
 require 'net/http'
-require 'json'
+require 'multi_json'
 require 'optparse'
 require 'ostruct'
 
@@ -77,7 +77,7 @@ def sign_in username, password
     raise "sign_in: error completing API call"
   end
 
-  j = JSON.parse res.body
+  j = MultiJson.load res.body
 
   raise 'sign-in failed' unless j['success'] == true
 
@@ -123,7 +123,7 @@ def create_gallery gallery
 
   puts res.body
 
-  j = JSON.parse res.body
+  j = MultiJson.load res.body
 
   id = j['editor_id']
 
@@ -158,7 +158,7 @@ def get_editor_id gallery
     raise "error completing API call: #{res.body}" 
   end
 
-  j = JSON.parse res.body
+  j = MultiJson.load res.body
 
   #return create_gallery(gallery) if j['galleries'].empty?
   raise 'no galleries available' if j['galleries'].empty?
@@ -186,8 +186,8 @@ def upload filename, editor_id
   unless res.is_a? Net::HTTPSuccess
     raise "upload: error completing API call"
   end
-  
-  JSON.parse res.body
+
+  MultiJson.load res.body
 end
 
 
@@ -209,7 +209,7 @@ ARGV.each do |filename|
   begin
     res = upload filename, editor_id
     ext = File.extname filename  
-  
+
     if res['type'].zero? or res['type'] == 8
       puts "https://i.minus.com/i#{res['id']}#{ext}"
     else
